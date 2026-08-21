@@ -14,7 +14,7 @@ class VoltsEvalApp extends StatelessWidget {
   const VoltsEvalApp({super.key});
   @override Widget build(BuildContext context) {
     return const MaterialApp(
-      title: 'Électriks Eval', 
+title: 'VISION BASKET', 
       debugShowCheckedModeBanner: false, 
       home: ListeJoueursPage()
     );
@@ -32,9 +32,9 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
   final TextEditingController _nouvEquipeCtrl = TextEditingController();
   final TextEditingController _evalCtrl = TextEditingController();
   String _pos = "Meneuse";
-  String _equipeActive = "ÉLECTRIKS CADET D1";
+  String _equipeActive = "VOLTS U 14 FILLES";
   List<Map<String, dynamic>> _joueurs = [];
-  List<String> _listeEquipes = ["ÉLECTRIKS CADET D1"];
+  List<String> _listeEquipes = ["VOLTS U14 FILLES"];
     static SharedPreferences? _prefsInstance;
 
 
@@ -51,7 +51,7 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
     if (eqJson != null) {
       _listeEquipes = List<String>.from(jsonDecode(eqJson));
     }
-    _chargerEquipeSpecifique(prefs.getString('derniere_equipe') ?? "ÉLECTRIKS CADET D1");
+    _chargerEquipeSpecifique(prefs.getString('derniere_equipe') ?? "VOLTS U14 FILLES");
   }
 
   Future<void> _chargerEquipeSpecifique(String nomEquipe) async {
@@ -156,6 +156,35 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
       ),
     );
   }
+     void _partagerBanqueEquipe() {
+    List<Map<String, dynamic>> banqueVierge = _joueurs.map((j) {
+      return {
+        'prenom': j['prenom'],
+        'nom': j['nom'],
+        'naissance': j['naissance'],
+        'position': j['position'],
+      };
+    }).toList();
+
+    String codeStructure = jsonEncode({'equipe': _equipeActive, 'joueurs': banqueVierge});
+    
+    // ICI : La ligne magique de Flutter qui copie automatiquement TOUT le code d'un coup !
+    Clipboard.setData(ClipboardData(text: codeStructure));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF172A45),
+        title: const Text("BANQUE COPIÉE !", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: const Text("Le listing complet de l'équipe a été copié dans votre presse-papiers. Vous pouvez maintenant l'envoyer par message ou courriel aux autres coachs !", style: TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Parfait", style: TextStyle(color: Color(0xFFFFD700)))),
+        ],
+      ),
+    );
+  }
+
+
     void _exporterEquipe() {
     final Map<String, dynamic> donnees = {
       "nomEquipe": _equipeActive,
@@ -168,13 +197,22 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
     );
   }
 
-    void _importerEquipe(String texteJson) async {
+      void _importerBanqueVierge(String texteJson) async {
     if (texteJson.trim().isEmpty) return;
     try {
       final Map<String, dynamic> donnees = jsonDecode(texteJson.trim());
-      final String nomImport = "${donnees['nomEquipe'] ?? 'IMPORT'} - CO-COACH";
+      // On prend le nom pur de l'équipe (sans ajouter - COACH)
+      final String nomImport = donnees['nomEquipe'] ?? donnees['equipe'] ?? 'IMPORT';
       final List<dynamic> joueursImport = donnees['joueurs'] ?? [];
       
+      // On s'assure que toutes les cases de notes sont créées et mises à zéro
+      for (var j in joueursImport) {
+        if (j is Map) {
+          j['points'] = j['points'] ?? 0;
+          j['notes'] = j['notes'] ?? {};
+        }
+      }
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('archive_$nomImport', jsonEncode(joueursImport));
       
@@ -188,7 +226,69 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
       
       _sauvegarderTout();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Équipe $nomImport importée !"))
+        SnackBar(content: Text("Listing pur de l'équipe '$nomImport' ajouté à la banque !"))
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Format de listing invalide !"))
+      );
+    }
+  }
+
+      void _importerEquipe(String texteJson) async {
+    if (texteJson.trim().isEmpty) return;
+    try {
+      final Map<String, dynamic> donnees = jsonDecode(texteJson.trim());
+      final String nomImport = "${donnees['nomEquipe'] ?? donnees['equipe'] ?? 'IMPORT'} - COACH";
+      final List<dynamic> joueursImport = donnees['joueurs'] ?? [];
+      
+      // 1. On va chercher le nom de base de l'équipe pure (ex: Bizz)
+      final String nomBasePure = donnees['nomEquipe'] ?? donnees['equipe'] ?? 'IMPORT';
+      
+      // 2. On lit le fichier d'origine qui dort dans la mémoire locale de l'appareil
+      final prefs = await SharedPreferences.getInstance();
+      final String? archiveLocaleRaw = prefs.getString('archive_$nomBasePure');
+      
+      List<Map<String, dynamic>> listeCombinee = [];
+      if (archiveLocaleRaw != null) {
+        // CORRECTION ÉCRAN ROUGE : On force la conversion de type proprement avec "as Map"
+        final List<dynamic> localDecoded = jsonDecode(archiveLocaleRaw);
+        listeCombinee = localDecoded.map((j) => Map<String, dynamic>.from(j as Map)).toList();
+      } else {
+        // Si l'appareil n'a pas cette équipe, on démarre à partir des joueuses reçues
+        listeCombinee = joueursImport.map((j) => Map<String, dynamic>.from(j as Map)).toList();
+      }
+
+      // 3. On injecte les notes reçues de l'autre coach par-dessus cette base
+              for (var maJoueuse in listeCombinee) {
+        final correspondant = joueursImport.firstWhere(
+          (j) => j['prenom'] == maJoueuse['prenom'] && j['nom'] == maJoueuse['nom'],
+          orElse: () => null,
+        );
+        if (correspondant != null && correspondant is Map) {
+          // On ajoute "_coach" au bout pour NE PAS écraser tes propres notes locales !
+          if (correspondant.containsKey('eval1')) maJoueuse['eval1_coach'] = correspondant['eval1'];
+          if (correspondant.containsKey('eval2')) maJoueuse['eval2_coach'] = correspondant['eval2'];
+          if (correspondant.containsKey('eval3')) maJoueuse['eval3_coach'] = correspondant['eval3'];
+          maJoueuse['points_coach'] = correspondant['points'] ?? 0;
+        }
+      }
+
+
+
+      // 4. On enregistre ce beau mélange sous le nom d'équipe de comparaison (+ COACH)
+      await prefs.setString('archive_$nomImport', jsonEncode(listeCombinee));
+      
+      setState(() {
+        if (!_listeEquipes.contains(nomImport)) {
+          _listeEquipes.add(nomImport);
+        }
+        _equipeActive = nomImport;
+        _joueurs = listeCombinee;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Équipe de comparaison '$nomImport' créée !"))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -197,14 +297,17 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
     }
   }
 
+      
+      
+
 
   void _supprimerEquipeActive() {
-    if (_equipeActive == "ÉLECTRIKS CADET D1") return;
+    if (_equipeActive == "VOLTS U14 FILLES") return;
     setState(() {
       _listeEquipes.remove(_equipeActive);
       _joueurs.clear();
       _sauvegarderTout();
-      _chargerEquipeSpecifique("ÉLECTRIKS CADET D1");
+      _chargerEquipeSpecifique("VOLTS U14 FILLES");
     });
   }
 
@@ -212,98 +315,139 @@ class _ListeJoueursPageState extends State<ListeJoueursPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF1E293B),
       appBar: AppBar(
-        backgroundColor: Colors.black, 
+  backgroundColor: Colors.black, 
         centerTitle: true, 
-        title: const Text('VOLTS EVAL - ÉLECTRIKS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+title: const Text('VISION BASKET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
       ),
-      body: Stack(children: [
+            body: Stack(children: [
         Positioned.fill(child: Column(children: [
           Expanded(child: Opacity(opacity: 0.85, child: Padding(padding: const EdgeInsets.only(top: 40), child: Image.asset('assets/logo_volts.png', fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox())))),
           Expanded(child: Opacity(opacity: 0.85, child: Padding(padding: const EdgeInsets.only(bottom: 40), child: Image.asset('assets/logo_electrik.png', fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox())))),
         ])),
-                Column(children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), 
-            color: Colors.black.withOpacity(0.9), 
-            child: Column(children: [
-              Row(children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _listeEquipes.contains(_equipeActive) ? _equipeActive : _listeEquipes.first, 
-                    dropdownColor: const Color(0xFF0F172A), 
-                    iconSize: 34,
-                    iconEnabledColor: const Color(0xFFFFD700),
-                    style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 16), 
-                    decoration: const InputDecoration(labelText: "CHOIX ÉQUIPE ARCHIVÉE", labelStyle: TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold), border: InputBorder.none), 
-                    items: _listeEquipes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), 
-                    onChanged: (v) { _sauvegarderTout(); _chargerEquipeSpecifique(v!); }
-                  )
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.copy_all, color: Colors.blueAccent, size: 32),
-                  tooltip: "Exporter l'équipe",
-                  onPressed: () => _exporterEquipe(),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.download, color: Colors.greenAccent, size: 32),
-                  tooltip: "Importer une équipe",
-                  onPressed: () {
-                    final TextEditingController importCtrl = TextEditingController();
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: const Color(0xFF172A45),
-                        title: const Text("COLLER LE CODE ÉQUIPE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        content: TextField(
-                          controller: importCtrl,
-                          maxLines: 4,
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                          decoration: const InputDecoration(hintText: "Colle le code reçu ici...", hintStyle: TextStyle(color: Colors.white30), border: OutlineInputBorder()),
-                        ),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler", style: TextStyle(color: Colors.grey))),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _importerEquipe(importCtrl.text);
-                            },
-                            child: const Text("IMPORTER", style: TextStyle(fontWeight: FontWeight.bold)),
-                          )
-                        ],
-                      ),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 32),
-                  tooltip: "Supprimer l'équipe active",
-                  onPressed: () => _supprimerEquipeActive(),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: Row(children: [
-                  Expanded(child: TextField(controller: _evalCtrl, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), decoration: const InputDecoration(labelText: "ÉVALUATEUR/TRICE", labelStyle: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold), border: InputBorder.none))), 
-                  IconButton(icon: const Icon(Icons.check_box, color: Colors.greenAccent, size: 22), onPressed: () { _sauvegarderTout(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Coach mémorisé !"))); })
-                ])),
-                const SizedBox(width: 8),
-                Expanded(child: Row(children: [
-                  Expanded(child: TextField(controller: _nouvEquipeCtrl, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), decoration: const InputDecoration(hintText: "Nom nouvelle équipe...", hintStyle: TextStyle(color: Colors.white60, fontSize: 12), border: InputBorder.none))), 
-                  ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6)), child: const Text("SAVE ÉQUIPE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)), onPressed: () { String n = _nouvEquipeCtrl.text.trim().toUpperCase(); if (n.isNotEmpty) { _sauvegarderTout(); _chargerEquipeSpecifique(n); _nouvEquipeCtrl.clear(); } })
-                ])),
-              ])
-            ])),
+        // On enveloppe la colonne principale dans un SingleChildScrollView pour stopper le débordement
+           Column(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), 
+              color: Colors.black.withOpacity(0.9),
 
-          Expanded(child: ListView.builder(itemCount: _joueurs.length, itemBuilder: (context, i) {
-            final j = _joueurs[i]; return Card(color: const Color(0xFF0F172A).withOpacity(0.85), child: ListTile(title: Text("${j['prenom']} ${j['nom']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)), subtitle: Text("Née: ${j['naissance']} • ${j['position']}", style: const TextStyle(color: Colors.grey, fontSize: 12)), leading: IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 22), onPressed: () => setState(() { _joueurs.removeAt(i); _sauvegarderTout(); })), trailing: SizedBox(width: 40, child: Row(children: [IconButton(icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 20), onPressed: () => _ouvrirDialogue(idx: i)), const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white)])), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FicheEvaluationPage(joueur: j, auChangement: _sauvegarderTout)))));
-          })),
-        ]),
-      ]), floatingActionButton: FloatingActionButton(backgroundColor: const Color(0xFFFFD700), child: const Icon(Icons.add, color: Colors.black), onPressed: () => _ouvrirDialogue()),
+            child: SingleChildScrollView(
+              child: Column(children: [
+                Row(children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _listeEquipes.contains(_equipeActive) ? _equipeActive : _listeEquipes.first, 
+                      dropdownColor: const Color(0xFF0F172A), 
+                      iconSize: 34,
+                      iconEnabledColor: const Color(0xFFFFD700),
+                      style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 16), 
+                      decoration: const InputDecoration(labelText: "CHOIX ÉQUIPE ARCHIVÉE", labelStyle: TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold), border: InputBorder.none), 
+                    items: _listeEquipes.map((e) => DropdownMenuItem(value: e, child: SizedBox(width: 140, child: Text(e, overflow: TextOverflow.ellipsis, maxLines: 1)))).toList(),
+                      onChanged: (v) { _sauvegarderTout(); _chargerEquipeSpecifique(v!); }
+                    )
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.copy_all, color: Colors.blueAccent, size: 26),
+                    tooltip: "Exporter l'équipe",
+                    onPressed: () => _exporterEquipe(),
+                  ),
+                                      IconButton(
+                      icon: const Icon(Icons.share, color: Colors.amberAccent, size: 24),
+                      tooltip: "Partager la banque d'équipe (vierge)",
+                      onPressed: () => _partagerBanqueEquipe(),
+                    ),
+
+                  IconButton(
+                    icon: const Icon(Icons.download, color: Colors.greenAccent, size: 36),
+                    tooltip: "Importer une équipe",
+                    onPressed: () {
+                      final TextEditingController importCtrl = TextEditingController();
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: const Color(0xFF172A45),
+                          title: const Text("COLLER LE CODE ÉQUIPE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          content: TextField(
+                            controller: importCtrl,
+                            maxLines: 4,
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                            decoration: const InputDecoration(hintText: "Colle le code reçu ici...", hintStyle: TextStyle(color: Colors.white30), border: OutlineInputBorder()),
+                          ),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler", style: TextStyle(color: Colors.grey))),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _importerEquipe(importCtrl.text);
+                              },
+                              child: const Text("IMPORTER ÉVAL.", style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _importerBanqueVierge(importCtrl.text);
+                              },
+                              child: const Text("REÇEVOIR BANQUE", style: TextStyle(fontWeight: FontWeight.bold)),
+                            )
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+     IconButton(
+                    icon: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 36),
+                    tooltip: "Supprimer l'équipe active",
+                    onPressed: () => _supprimerEquipeActive(),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: Row(children: [
+                    Expanded(child: TextField(controller: _evalCtrl, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), decoration: const InputDecoration(labelText: "ÉVALUATEUR/TRICE", labelStyle: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold), border: InputBorder.none))), 
+                    IconButton(icon: const Icon(Icons.check_box, color: Colors.greenAccent, size: 22), onPressed: () { _sauvegarderTout(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Coach mémorisé !"))); })
+                  ])),
+                  const SizedBox(width: 8),
+                  Expanded(child: Row(children: [
+                    Expanded(child: TextField(controller: _nouvEquipeCtrl, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), decoration: const InputDecoration(hintText: "NOUVELLE ÉQUIPE...", hintStyle: TextStyle(color: Colors.white60, fontSize: 12), border: InputBorder.none))), 
+                    ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6)), child: const Text("SAUVEGARDE ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), onPressed: () { String n = _nouvEquipeCtrl.text.trim().toUpperCase(); if (n.isNotEmpty) { _sauvegarderTout(); _chargerEquipeSpecifique(n); _nouvEquipeCtrl.clear(); } })
+                  ])),
+                ])
+                      ])),
+          ),
+          
+          Expanded(
+            child: ListView.builder(
+              itemCount: _joueurs.length, 
+              itemBuilder: (context, i) {
+                final j = _joueurs[i]; 
+                return Card(
+                  color: const Color(0xFF0F172A).withOpacity(0.85), 
+                  child: ListTile(
+                    title: Text("${j['prenom']} ${j['nom']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)), 
+                    subtitle: Text("Née: ${j['naissance']} • ${j['position']}", style: const TextStyle(color: Colors.grey, fontSize: 12)), 
+                    leading: IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 22), onPressed: () => setState(() { _joueurs.removeAt(i); _sauvegarderTout(); })), 
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FicheEvaluationPage(joueur: j, auChangement: _sauvegarderTout))),
+                  ),
+                );
+              },
+            ),
+          ),
+                ]),
+      ]), 
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFFFFD700), 
+        child: const Icon(Icons.add, color: Colors.black), 
+        onPressed: () => _ouvrirDialogue(),
+      ),
     );
   }
 }
+
+
 class FicheEvaluationPage extends StatefulWidget {
   final Map<String, dynamic> joueur;
   final VoidCallback auChangement;
@@ -400,7 +544,7 @@ class _FicheEvaluationPageState
               const SizedBox(height: 10),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                 const Text("SAISIE DE LA SESSION SÉLECTIONNÉE (1 À 10)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 11)),
-                Text("📅 ÉVALUÉ LE : $dateAffichee", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 11)),
+                Text("📅 ÉVALUÉ LE: $dateAffichee", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 11)),
               ]),
               const SizedBox(height: 6),
               ...nA.keys.where((k) => k != 'date').map((critere) {
@@ -410,31 +554,34 @@ class _FicheEvaluationPageState
                     Text(critere, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
                     Text(note == 0 ? "Non noté" : "$note / 10", style: const TextStyle(color: Color(0xFFFFD700)))
                   ]),
-                  SingleChildScrollView(
+                SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
                           children: List.generate(10, (i) {
-                                         int v = i + 1;
+                                                              int v = i + 1;
                                 bool estToi = note == v;
+                                
+                                                              final dynamic sesSessions = widget.joueur['${_ev}_coach'];
                                 bool estLui = false;
-
-                            final String cleCc = "${_ListeJoueursPageState._prefsInstance?.getString('derniere_equipe') ?? 'ÉLECTRIKS CADET D1'} - CO-COACH";
-                                final SharedPreferences? localPrefs = _ListeJoueursPageState._prefsInstance;
-                                if (localPrefs != null) {
-                                  final String? jJson = localPrefs.getString('archive_$cleCc');
-                                  if (jJson != null) {
-                                    final List<dynamic> lCc = jsonDecode(jJson);
-                                    final jCc = lCc.firstWhere((j) => j['prenom'] == widget.joueur['prenom'] && j['nom'] == widget.joueur['nom'], orElse: () => null);
-                                    if (jCc != null && jCc[_ev] != null) {
-                                      estLui = (jCc[_ev][critere] ?? 0) == v;
-                                    }
-                                  }
+                                if (sesSessions is Map) {
+                                  estLui = (sesSessions[critere] ?? 0) == v;
                                 }
 
+                                if (sesSessions is Map) {
+                                  estLui = (sesSessions[critere] ?? 0) == v;
+                                } else if (sesSessions is int) {
+                                  estLui = sesSessions == v;
+                                }
+
+                                // Règle bicolore : Jaune Or pour toi, Vert pour lui, Jaune Or si identique !
                                 Color caseColor = const Color(0xFF333333);
-                                if (estToi && estLui) caseColor = const Color(0xFFFFD700); // OR SI IDENTIQUE
-                                else if (estToi) caseColor = Colors.green;                // VERT POUR TOI
-                                else if (estLui) caseColor = Colors.blue;                 // BLEU POUR LUI
+                                if (estToi && estLui) {
+                                  caseColor = const Color(0xFFFFD700); // Jaune Or si identique (Consensus)
+                                } else if (estToi) {
+                                  caseColor = const Color(0xFFFFD700); // Jaune Or pour TOI
+                                } else if (estLui) {
+                                  caseColor = Colors.green;            // Vert pour LUI (Co-Coach)
+                                }
 
                                 return GestureDetector(
                                     onTap: () => setState(() {
@@ -510,7 +657,7 @@ class _FicheEvaluationPageState
                   const Icon(Icons.analytics, color: Color(0xFFFFD700), size: 24),
                 ]),
                 const SizedBox(height: 4),
-                Text("📅 Évalué le : $dt", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54, fontSize: 12)),
+                Text("📅 Évalué LE : $dt", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54, fontSize: 12)),
                 const Divider(color: Colors.black12, height: 16),
                 ...nA.keys.where((k) => k != 'date').map((cr) {
                   int note = nA[cr] ?? 0;
@@ -548,4 +695,4 @@ class _FicheEvaluationPageState
   }
 }
 
-
+//beta 8
